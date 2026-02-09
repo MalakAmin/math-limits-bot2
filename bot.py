@@ -1,5 +1,5 @@
-# 🧮 بوت اختبارات رياضيات النهايات - مع Keep-alive
-# 🔧 يعمل 24/7 على Render
+# 🧮 بوت اختبارات رياضيات النهايات - الإصدار المستقر
+# 🔧 يعمل 24/7 على Render بدون أخطاء Conflict
 
 import os
 import asyncio
@@ -12,6 +12,7 @@ from datetime import datetime
 from flask import Flask
 from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup
 from telegram.ext import Application, CommandHandler, CallbackQueryHandler, ContextTypes
+from telegram.error import Conflict
 
 # 🔐 التوكن من متغيرات البيئة
 TOKEN = os.environ.get('TELEGRAM_TOKEN')
@@ -36,11 +37,12 @@ def home():
             <h1>🤖 بوت اختبارات الرياضيات</h1>
             <div class="status">✅ يعمل بنجاح!</div>
             <p>⏰ يعمل 24/7 على Render</p>
-            <p>👨🏫 للمعلم: استخدم /stats في Telegram</p>
-            <p>📱 للطلاب: ابحث عن @mathimatical_testBot</p>
+            <p>👨🏫 للمعلم: استخدم /top في Telegram</p>
+            <p>📱 للطلاب: ابحث عن البوت في Telegram</p>
+            <p>📞 آخر فحص: {}</p>
         </body>
     </html>
-    """
+    """.format(datetime.now().strftime('%Y-%m-%d %H:%M:%S'))
 
 @app.route('/health')
 def health():
@@ -50,31 +52,10 @@ def health():
 def ping():
     return "pong"
 
-# 🔄 وظيفة لإرسال طلبات دورية
-def keep_alive():
-    """إبقاء البوت نشطاً بإرسال طلبات دورية"""
-    def ping_server():
-        while True:
-            try:
-                # الحصول على رابط Render تلقائياً
-                render_url = os.environ.get('RENDER_URL', '')
-                if not render_url:
-                    # محاولة تخمين الرابط
-                    service_name = os.environ.get('RENDER_SERVICE_NAME', '')
-                    if service_name:
-                        render_url = f"https://{service_name}.onrender.com"
-                
-                if render_url:
-                    response = requests.get(f"{render_url}/ping", timeout=10)
-                    print(f"✅ Keep-alive ping: {response.status_code} at {datetime.now().strftime('%H:%M:%S')}")
-                else:
-                    print("⚠️ لا يمكن تحديد رابط Render")
-            except Exception as e:
-                print(f"⚠️ Keep-alive failed: {e}")
-            time.sleep(300)  # كل 5 دقائق
-    
-    thread = threading.Thread(target=ping_server, daemon=True)
-    thread.start()
+# 🔄 وظيفة Keep-alive مبسطة
+def run_keep_alive():
+    """تشغيل Flask فقط للـ keep-alive"""
+    app.run(host='0.0.0.0', port=5000, debug=False, use_reloader=False, threaded=True)
 
 # 📊 قاعدة البيانات
 class Database:
@@ -480,12 +461,8 @@ async def top_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     msg += f"\n👥 إجمالي الطلاب: {len(students)}"
     await update.message.reply_text(msg)
 
-# 🔧 تشغيل Flask في خيط منفصل
-def run_flask():
-    app.run(host='0.0.0.0', port=5000, debug=False, use_reloader=False)
-
-# 🔧 تشغيل البوت بطريقة واحدة فقط
-def run_bot():
+# 🔧 تشغيل البوت فقط (بدون Flask منفصل)
+async def run_telegram_bot():
     print("=" * 50)
     print("🧮 بوت اختبارات رياضيات النهايات")
     print("=" * 50)
@@ -493,18 +470,17 @@ def run_bot():
     print(f"👥 الطلاب المسجلين: {len(db.data['students'])}")
     print(f"📚 عدد أسئلة True/False: {len(TRUE_FALSE_QUESTIONS)}")
     print(f"📚 عدد أسئلة MCQ: {len(MCQ_QUESTIONS)}")
-    print("✅ البوت يعمل 24/7 مع Keep-alive!")
+    print("✅ البوت يعمل 24/7 على Render")
     print("=" * 50)
     
-    # بدء Keep-alive
-    keep_alive()
-    
-    # تشغيل البوت - طريقة واحدة فقط
-    loop = asyncio.new_event_loop()
-    asyncio.set_event_loop(loop)
-    
-    async def main():
-        # إنشاء التطبيق
+    try:
+        # حذف أي Webhook سابق أولاً
+        import telegram
+        bot = telegram.Bot(TOKEN)
+        await bot.delete_webhook()
+        print("✅ تم حذف Webhook السابق")
+        
+        # إنشاء التطبيق مع drop_pending_updates
         application = Application.builder().token(TOKEN).build()
         
         # إضافة handlers
@@ -516,39 +492,49 @@ def run_bot():
         application.add_handler(CallbackQueryHandler(handle_answer, pattern="^tf_"))
         application.add_handler(CallbackQueryHandler(handle_answer, pattern="^mcq_"))
         
-        # البدء
+        # البدء مع drop_pending_updates لمنع Conflict
         await application.initialize()
         await application.start()
-        print("🤖 بدأ استقبال الرسائل...")
+        print("✅ تم بدء التطبيق")
         
-        # بدء الاستماع
-        await application.updater.start_polling()
+        # بدء الـ polling مع تنظيف التحديثات القديمة
+        await application.updater.start_polling(drop_pending_updates=True)
+        print("✅ بدأ استقبال الرسائل (Polling)")
         
         # البقاء نشطاً
-        try:
-            while True:
-                await asyncio.sleep(3600)
-        except KeyboardInterrupt:
-            print("\n🛑 إيقاف البوت...")
-            await application.stop()
+        print("🔄 البوت يعمل... (اضغط Ctrl+C لإيقاف)")
+        while True:
+            await asyncio.sleep(3600)  # النوم لمدة ساعة
+            
+    except Conflict as e:
+        print(f"❌ خطأ Conflict: {e}")
+        print("⚠️ تأكد أن البوت لا يعمل في مكان آخر")
+    except Exception as e:
+        print(f"❌ خطأ غير متوقع: {e}")
+        import traceback
+        traceback.print_exc()
+
+# 🚀 نقطة البداية - نسخة واحدة فقط تعمل
+def main():
+    """الدالة الرئيسية التي تشغل كل شيء في خيط واحد"""
+    print("🚀 بدء تشغيل بوت الرياضيات...")
     
+    # تشغيل Flask في خيط منفصل (فقط للـ keep-alive)
+    flask_thread = threading.Thread(target=run_keep_alive, daemon=True)
+    flask_thread.start()
+    print("🌐 بدأ تشغيل Flask للـ keep-alive")
+    
+    # الانتظار قليلاً ثم تشغيل البوت
+    time.sleep(2)
+    
+    # تشغيل البوت في الـ event loop الرئيسي
     try:
-        loop.run_until_complete(main())
+        asyncio.run(run_telegram_bot())
     except KeyboardInterrupt:
         print("\n🛑 تم إيقاف البوت")
     except Exception as e:
-        print(f"❌ خطأ: {e}")
-        import traceback
-        traceback.print_exc()
-    finally:
-        loop.close()
+        print(f"❌ خطأ في التشغيل: {e}")
 
-# 🚀 نقطة البداية - طريقة واحدة فقط
+# 🚀 بدء التشغيل
 if __name__ == "__main__":
-    # تشغيل Flask في خيط منفصل (فقط للـ keep-alive)
-    flask_thread = threading.Thread(target=run_flask, daemon=True)
-    flask_thread.start()
-    
-    # تشغيل البوت بعد ثانيتين
-    time.sleep(2)
-    run_bot()
+    main()
