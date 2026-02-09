@@ -1,1 +1,1 @@
-# math-limits-bot2
+# math-limits-bot
