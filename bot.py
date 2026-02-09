@@ -368,7 +368,7 @@ MCQ_QUESTIONS = [
     }
 ]
 
-# 🎯 دوال البوت (نفس الدوال السابقة)
+# 🎯 دوال البوت
 async def start_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user = update.effective_user
     is_new = db.register_student(user.id, user.first_name)
@@ -484,8 +484,8 @@ async def top_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
 def run_flask():
     app.run(host='0.0.0.0', port=5000, debug=False, use_reloader=False)
 
-# 🔧 تشغيل البوت
-def run_telegram_bot():
+# 🔧 تشغيل البوت بطريقة واحدة فقط
+def run_bot():
     print("=" * 50)
     print("🧮 بوت اختبارات رياضيات النهايات")
     print("=" * 50)
@@ -499,33 +499,56 @@ def run_telegram_bot():
     # بدء Keep-alive
     keep_alive()
     
-    # تشغيل البوت
-    async def main():
-        app = Application.builder().token(TOKEN).build()
-        app.add_handler(CommandHandler("start", start_command))
-        app.add_handler(CommandHandler("truefalse", truefalse_command))
-        app.add_handler(CommandHandler("mcq", mcq_command))
-        app.add_handler(CommandHandler("score", score_command))
-        app.add_handler(CommandHandler("top", top_command))
-        app.add_handler(CallbackQueryHandler(handle_answer, pattern="^tf_"))
-        app.add_handler(CallbackQueryHandler(handle_answer, pattern="^mcq_"))
-        
-        await app.initialize()
-        await app.start()
-        await app.updater.start_polling()
-        
-        # استمر في التشغيل
-        while True:
-            await asyncio.sleep(3600)
+    # تشغيل البوت - طريقة واحدة فقط
+    loop = asyncio.new_event_loop()
+    asyncio.set_event_loop(loop)
     
-    asyncio.run(main())
+    async def main():
+        # إنشاء التطبيق
+        application = Application.builder().token(TOKEN).build()
+        
+        # إضافة handlers
+        application.add_handler(CommandHandler("start", start_command))
+        application.add_handler(CommandHandler("truefalse", truefalse_command))
+        application.add_handler(CommandHandler("mcq", mcq_command))
+        application.add_handler(CommandHandler("score", score_command))
+        application.add_handler(CommandHandler("top", top_command))
+        application.add_handler(CallbackQueryHandler(handle_answer, pattern="^tf_"))
+        application.add_handler(CallbackQueryHandler(handle_answer, pattern="^mcq_"))
+        
+        # البدء
+        await application.initialize()
+        await application.start()
+        print("🤖 بدأ استقبال الرسائل...")
+        
+        # بدء الاستماع
+        await application.updater.start_polling()
+        
+        # البقاء نشطاً
+        try:
+            while True:
+                await asyncio.sleep(3600)
+        except KeyboardInterrupt:
+            print("\n🛑 إيقاف البوت...")
+            await application.stop()
+    
+    try:
+        loop.run_until_complete(main())
+    except KeyboardInterrupt:
+        print("\n🛑 تم إيقاف البوت")
+    except Exception as e:
+        print(f"❌ خطأ: {e}")
+        import traceback
+        traceback.print_exc()
+    finally:
+        loop.close()
 
-# 🚀 نقطة البداية
+# 🚀 نقطة البداية - طريقة واحدة فقط
 if __name__ == "__main__":
-    # تشغيل Flask في خيط منفصل
+    # تشغيل Flask في خيط منفصل (فقط للـ keep-alive)
     flask_thread = threading.Thread(target=run_flask, daemon=True)
     flask_thread.start()
     
     # تشغيل البوت بعد ثانيتين
     time.sleep(2)
-    run_telegram_bot()
+    run_bot()
