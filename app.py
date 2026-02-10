@@ -2,7 +2,7 @@ import os
 import sys
 import logging
 import asyncio
-import json
+from datetime import datetime
 
 # إعداد logging أولاً
 logging.basicConfig(
@@ -36,70 +36,78 @@ TOKEN = os.getenv('TELEGRAM_BOT_TOKEN', '')
 PORT = int(os.environ.get('PORT', 10000))
 IMAGES_BASE_DIR = 'Images'
 
-# تحميل الإجابات الصحيحة
-def load_correct_answers():
-    """تحميل الإجابات الصحيحة من ملف Excel"""
-    try:
-        df = pd.read_excel('Answers.xlsx')
-        logger.info(f"✅ تم تحميل ملف Excel بنجاح")
-        
-        # تنظيف أسماء الأعمدة
-        df.columns = df.columns.str.strip()
-        
-        # التحقق من الأعمدة
-        logger.info(f"📋 أسماء الأعمدة: {list(df.columns)}")
-        
-        # إنشاء قاموس للإجابات الصحيحة
-        correct_answers = {}
-        
-        for idx, row in df.iterrows():
-            try:
-                question_num = int(row['image number'])
-                q_type = str(row['Question Type']).strip().lower()
-                answer = str(row['answer']).strip().lower()
-                
-                correct_answers[question_num] = {
-                    'type': q_type,
-                    'correct_answer': answer,
-                    'user_answer': None,
-                    'is_correct': False
-                }
-                
-            except Exception as e:
-                logger.warning(f"⚠️ خطأ في الصف {idx+1}: {e}")
-                continue
-        
-        logger.info(f"📊 تم تحميل {len(correct_answers)} إجابة صحيحة")
-        return correct_answers
-    
-    except Exception as e:
-        logger.error(f"❌ خطأ في تحميل ملف Excel: {e}")
-        # إنشاء بيانات وهمية
-        return create_mock_data()
+# البيانات الثابتة من ملف Excel
+CORRECT_ANSWERS_DATA = {
+    1: {'type': 'tf', 'correct_answer': 't'},
+    2: {'type': 'tf', 'correct_answer': 't'},
+    3: {'type': 'tf', 'correct_answer': 'f'},
+    4: {'type': 'tf', 'correct_answer': 't'},
+    5: {'type': 'tf', 'correct_answer': 'f'},
+    6: {'type': 'tf', 'correct_answer': 't'},
+    7: {'type': 'tf', 'correct_answer': 't'},
+    8: {'type': 'tf', 'correct_answer': 'f'},
+    9: {'type': 'tf', 'correct_answer': 'f'},
+    10: {'type': 'tf', 'correct_answer': 'f'},
+    11: {'type': 'tf', 'correct_answer': 't'},
+    12: {'type': 'tf', 'correct_answer': 't'},
+    13: {'type': 'tf', 'correct_answer': 'f'},
+    14: {'type': 'tf', 'correct_answer': 'f'},
+    15: {'type': 'tf', 'correct_answer': 'f'},
+    16: {'type': 'tf', 'correct_answer': 'f'},
+    17: {'type': 'tf', 'correct_answer': 't'},
+    18: {'type': 'tf', 'correct_answer': 'f'},
+    19: {'type': 'tf', 'correct_answer': 'f'},
+    20: {'type': 'mcq', 'correct_answer': 'c'},
+    21: {'type': 'mcq', 'correct_answer': 'b'},
+    22: {'type': 'mcq', 'correct_answer': 'c'},
+    23: {'type': 'mcq', 'correct_answer': 'c'},
+    24: {'type': 'mcq', 'correct_answer': 'b'},
+    25: {'type': 'mcq', 'correct_answer': 'b'},
+    26: {'type': 'mcq', 'correct_answer': 'b'},
+    27: {'type': 'mcq', 'correct_answer': 'a'},
+    28: {'type': 'mcq', 'correct_answer': 'd'},
+    29: {'type': 'mcq', 'correct_answer': 'c'},
+    30: {'type': 'mcq', 'correct_answer': 'b'},
+    31: {'type': 'mcq', 'correct_answer': 'a'},
+    32: {'type': 'mcq', 'correct_answer': 'd'},
+    33: {'type': 'mcq', 'correct_answer': 'c'},
+    34: {'type': 'mcq', 'correct_answer': 'a'},
+    35: {'type': 'mcq', 'correct_answer': 'c'},
+    36: {'type': 'mcq', 'correct_answer': 'd'},
+    37: {'type': 'mcq', 'correct_answer': 'a'},
+    38: {'type': 'mcq', 'correct_answer': 'a'},
+    39: {'type': 'mcq', 'correct_answer': 'c'},
+    40: {'type': 'mcq', 'correct_answer': 'b'},
+    41: {'type': 'mcq', 'correct_answer': 'b'},
+    42: {'type': 'mcq', 'correct_answer': 'c'},
+    43: {'type': 'mcq', 'correct_answer': 'd'},
+    44: {'type': 'mcq', 'correct_answer': 'd'},
+    45: {'type': 'mcq', 'correct_answer': 'a'}
+}
 
-def create_mock_data():
-    """إنشاء بيانات وهمية للاختبار"""
-    mock_data = {}
+def load_correct_answers():
+    """تحميل الإجابات الصحيحة - باستخدام البيانات الثابتة"""
+    logger.info("📖 جاري تحميل الإجابات الصحيحة...")
     
-    for i in range(1, 20):
-        mock_data[i] = {
-            'type': 'tf',
-            'correct_answer': 't' if i % 2 == 0 else 'f',
+    correct_answers = {}
+    
+    for question_num, data in CORRECT_ANSWERS_DATA.items():
+        correct_answers[question_num] = {
+            'type': data['type'],
+            'correct_answer': data['correct_answer'],
             'user_answer': None,
-            'is_correct': False
+            'is_correct': False,
+            'answered_at': None
         }
     
-    for i in range(20, 46):
-        answers = ['a', 'b', 'c', 'd']
-        mock_data[i] = {
-            'type': 'mcq',
-            'correct_answer': answers[i % 4],
-            'user_answer': None,
-            'is_correct': False
-        }
+    logger.info(f"✅ تم تحميل {len(correct_answers)} إجابة صحيحة")
     
-    logger.info(f"📝 تم إنشاء {len(mock_data)} سؤال وهمي")
-    return mock_data
+    # عرض إحصائيات
+    tf_count = sum(1 for q in correct_answers.values() if q['type'] == 'tf')
+    mcq_count = sum(1 for q in correct_answers.values() if q['type'] == 'mcq')
+    logger.info(f"📈 الإحصائيات: صح/خطأ={tf_count}, MCQ={mcq_count}")
+    
+    return correct_answers
 
 def get_image_path(question_num):
     """الحصول على مسار الصورة بناءً على رقم السؤال"""
@@ -108,36 +116,53 @@ def get_image_path(question_num):
     elif 20 <= question_num <= 45:
         folder = "mcq"
     else:
+        logger.error(f"❌ رقم سؤال غير صحيح: {question_num}")
         return None
     
-    # مسارات محتملة
+    # المجلد الأساسي
     base_path = os.path.join(IMAGES_BASE_DIR, folder)
     
     if not os.path.exists(base_path):
         logger.error(f"❌ المجلد غير موجود: {base_path}")
-        return None
+        # محاولة مسار بديل
+        alt_base_path = os.path.join('images', folder)
+        if os.path.exists(alt_base_path):
+            base_path = alt_base_path
+            logger.info(f"✅ وجدت المجلد البديل: {alt_base_path}")
+        else:
+            return None
     
-    # البحث عن الصورة بأي امتداد
-    possible_extensions = ['.png', '.jpg', '.jpeg', '.PNG', '.JPG', '.JPEG']
+    # قائمة الامتدادات المحتملة
+    extensions = ['.png', '.jpg', '.jpeg', '.PNG', '.JPG', '.JPEG']
     
-    for ext in possible_extensions:
+    # المحاولة 1: البحث بالرقم + الامتداد
+    for ext in extensions:
         path = os.path.join(base_path, f"{question_num}{ext}")
         if os.path.exists(path):
             logger.debug(f"📸 وجدت صورة: {path}")
             return path
     
-    # محاولة العثور على أي ملف يبدأ برقم السؤال
+    # المحاولة 2: البحث بأي ملف يبدأ بالرقم
     try:
         files = os.listdir(base_path)
         for file in files:
+            # تحقق إذا كان الملف يبدأ برقم السؤال
             if file.startswith(str(question_num)):
                 path = os.path.join(base_path, file)
-                logger.debug(f"📸 وجدت صورة (بالاسم): {path}")
+                logger.debug(f"📸 وجدت صورة بالاسم: {path}")
+                return path
+            
+            # تحقق إذا كان الملف يحتوي على رقم السؤال في الاسم
+            if f"_{question_num}." in file or f" {question_num}." in file:
+                path = os.path.join(base_path, file)
+                logger.debug(f"📸 وجدت صورة تحتوي على الرقم: {path}")
                 return path
     except Exception as e:
         logger.error(f"❌ خطأ في قراءة المجلد: {e}")
     
-    logger.warning(f"⚠️ لم أجد صورة للسؤال {question_num}")
+    logger.warning(f"⚠️ لم أجد صورة للسؤال {question_num} في {base_path}")
+    logger.warning(f"⚠️ محتويات المجلد: {os.listdir(base_path) if os.path.exists(base_path) else 'غير موجود'}")
+    
     return None
 
 # قاموس لحفظ إجابات المستخدمين
@@ -148,20 +173,41 @@ correct_answers = load_correct_answers()
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """بدء الاختبار"""
     user_id = update.effective_user.id
-    logger.info(f"👤 المستخدم {user_id} بدأ الجلسة")
+    username = update.effective_user.username or update.effective_user.first_name
     
-    await update.message.reply_text(
+    logger.info(f"👤 المستخدم {username} ({user_id}) بدأ الجلسة")
+    
+    welcome_text = (
         "📚 **مرحباً بك في بوت اختبار الرياضيات!**\n\n"
         "🎯 **معلومات عن الاختبار:**\n"
         "• الأسئلة 1-19: صح/خطأ ✅/❌\n"
-        "• الأسئلة 20-45: اختيار من متعدد 🔠\n\n"
-        "🔄 **لبدء الاختبار:**\n"
+        "• الأسئلة 20-45: اختيار من متعدد 🔠\n"
+        "• عدد الأسئلة: 45 سؤالاً\n\n"
+        "📝 **كيفية الاستخدام:**\n"
+        "1. اضغط /begin لبدء الاختبار\n"
+        "2. اختر الإجابة المناسبة لكل سؤال\n"
+        "3. في النهاية سأعرض نتيجتك\n\n"
+        "⚡ **لبدء الاختبار الآن:**\n"
         "اضغط /begin"
     )
+    
+    await update.message.reply_text(welcome_text, parse_mode='Markdown')
 
 async def begin_test(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """بدء إرسال الأسئلة"""
     user_id = update.effective_user.id
+    username = update.effective_user.username or update.effective_user.first_name
+    
+    # التحقق من وجود اختبار سابق
+    if user_id in user_sessions and not user_sessions[user_id].get('completed', True):
+        await update.message.reply_text(
+            "⚠️ لديك اختبار قيد التقدم!\n\n"
+            "📊 لعرض النتائج الحالية: /results\n"
+            "🔄 لبدء اختبار جديد: /start ثم /begin"
+        )
+        return
+    
+    logger.info(f"🚀 المستخدم {username} ({user_id}) بدأ الاختبار")
     
     # تهيئة جلسة المستخدم
     user_sessions[user_id] = {
@@ -170,23 +216,30 @@ async def begin_test(update: Update, context: ContextTypes.DEFAULT_TYPE):
         'score': 0,
         'answers': {},
         'completed': False,
-        'username': update.effective_user.username or update.effective_user.first_name,
-        'message_id': None  # لحفظ معرف الرسالة
+        'username': username,
+        'start_time': datetime.now(),
+        'end_time': None
     }
     
-    # نسخ الإجابات الصحيحة
+    # نسخ الإجابات الصحيحة مع إضافة حقول إضافية
     for q_num, data in correct_answers.items():
         user_sessions[user_id]['answers'][q_num] = {
             'type': data['type'],
             'correct_answer': data['correct_answer'],
             'user_answer': None,
-            'is_correct': False
+            'is_correct': False,
+            'answered_at': None,
+            'response_time': None
         }
     
+    # إرسال رسالة بدء الاختبار
     await update.message.reply_text(
-        f"✅ **تم تهيئة الاختبار!**\n"
-        f"📊 عدد الأسئلة: {len(correct_answers)}\n\n"
-        "⏳ جاري إرسال أول سؤال..."
+        f"✅ **تم تهيئة الاختبار بنجاح!**\n\n"
+        f"📊 عدد الأسئلة: {len(correct_answers)}\n"
+        f"👤 الطالب: {username}\n"
+        f"⏰ وقت البدء: {datetime.now().strftime('%H:%M:%S')}\n\n"
+        "🎯 **جاري إرسال أول سؤال...**",
+        parse_mode='Markdown'
     )
     
     # إرسال أول سؤال
@@ -197,8 +250,10 @@ async def send_question(update: Update, context: ContextTypes.DEFAULT_TYPE, user
     session = user_sessions[user_id]
     question_num = session['current_question']
     
+    # التحقق من انتهاء الأسئلة
     if question_num > session['total_questions']:
         logger.info(f"🏁 المستخدم {user_id} أنهى جميع الأسئلة")
+        session['end_time'] = datetime.now()
         await show_results(update, context, user_id)
         return
     
@@ -208,13 +263,19 @@ async def send_question(update: Update, context: ContextTypes.DEFAULT_TYPE, user
     image_path = get_image_path(question_num)
     
     if not image_path:
+        logger.error(f"❌ لم أجد صورة للسؤال {question_num}")
+        
+        # إرسال رسالة خطأ
         await context.bot.send_message(
-            chat_id=update.effective_chat.id,
-            text=f"⚠️ لم أجد صورة للسؤال {question_num}\n"
-                 f"جاري الانتقال للسؤال التالي..."
+            chat_id=update.effective_chat.id if hasattr(update, 'message') else update.callback_query.message.chat.id,
+            text=f"⚠️ **عذراً، لم أتمكن من العثور على صورة السؤال {question_num}**\n\n"
+                 f"جاري الانتقال للسؤال التالي...",
+            parse_mode='Markdown'
         )
+        
+        # الانتقال للسؤال التالي
         session['current_question'] += 1
-        await asyncio.sleep(1)
+        await asyncio.sleep(1.5)
         await send_question(update, context, user_id)
         return
     
@@ -222,6 +283,7 @@ async def send_question(update: Update, context: ContextTypes.DEFAULT_TYPE, user
     question_data = session['answers'][question_num]
     
     if question_data['type'] == 'tf':
+        # أزرار صح/خطأ
         keyboard = [
             [
                 InlineKeyboardButton("✅ صح (True)", callback_data=f"ans_{question_num}_t"),
@@ -230,6 +292,7 @@ async def send_question(update: Update, context: ContextTypes.DEFAULT_TYPE, user
         ]
         question_type_text = "📝 **سؤال صح/خطأ**"
     else:
+        # أزرار MCQ
         keyboard = [
             [
                 InlineKeyboardButton("أ", callback_data=f"ans_{question_num}_a"),
@@ -243,128 +306,159 @@ async def send_question(update: Update, context: ContextTypes.DEFAULT_TYPE, user
     reply_markup = InlineKeyboardMarkup(keyboard)
     
     try:
+        # إرسال الصورة مع الأزرار
         with open(image_path, 'rb') as photo:
-            # إرسال الصورة مع الأزرار
             message = await context.bot.send_photo(
-                chat_id=update.effective_chat.id,
+                chat_id=update.effective_chat.id if hasattr(update, 'message') else update.callback_query.message.chat.id,
                 photo=photo,
                 caption=f"**السؤال رقم: {question_num}**\n{question_type_text}\n\nاختر الإجابة الصحيحة:",
                 reply_markup=reply_markup,
                 parse_mode='Markdown'
             )
-            # حفظ معرف الرسالة
-            session['message_id'] = message.message_id
+            
+            # حفظ معرف الرسالة (اختياري)
+            session['last_message_id'] = message.message_id
             
     except Exception as e:
         logger.error(f"❌ خطأ في إرسال الصورة: {e}")
+        
         # إرسال رسالة نصية بديلة
-        message = await context.bot.send_message(
-            chat_id=update.effective_chat.id,
+        await context.bot.send_message(
+            chat_id=update.effective_chat.id if hasattr(update, 'message') else update.callback_query.message.chat.id,
             text=f"**السؤال رقم: {question_num}**\n{question_type_text}\n\nاختر الإجابة الصحيحة:",
             reply_markup=reply_markup,
             parse_mode='Markdown'
         )
-        session['message_id'] = message.message_id
 
 async def handle_answer(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """معالجة إجابة المستخدم"""
+    logger.info("🎯 تم استدعاء handle_answer")
+    
+    if not update.callback_query:
+        logger.error("❌ لا يوجد callback_query!")
+        return
+    
     query = update.callback_query
-    
-    # الرد على callback query أولاً
-    await query.answer()
-    
     user_id = query.from_user.id
-    logger.info(f"📝 المستخدم {user_id} ضغط على زر: {query.data}")
     
+    # الرد على callback query - هذا مهم جداً!
+    try:
+        await query.answer()
+        logger.info(f"✅ تم الرد على callback_query للمستخدم {user_id}")
+    except Exception as e:
+        logger.error(f"❌ خطأ في query.answer(): {e}")
+    
+    logger.info(f"📱 بيانات الزر: {query.data}")
+    
+    # التحقق من وجود جلسة المستخدم
     if user_id not in user_sessions:
-        await query.edit_message_text("⚠️ الجلسة منتهية. اضغط /start للبدء")
+        await query.edit_message_caption(
+            caption="⚠️ **انتهت جلستك**\n\nاضغط /start للبدء من جديد",
+            reply_markup=None
+        )
         return
     
     session = user_sessions[user_id]
     
     # استخراج البيانات من callback_data
-    data = query.data
-    logger.info(f"🔍 بيانات callback: {data}")
-    
     try:
-        # التنسيق: ans_رقم_إجابة
-        parts = data.split('_')
+        # التنسيق المتوقع: ans_رقم_إجابة
+        parts = query.data.split('_')
         if len(parts) != 3:
-            logger.error(f"❌ تنسيق callback_data غير صحيح: {data}")
+            logger.error(f"❌ تنسيق غير صحيح: {query.data}")
             return
         
         question_num = int(parts[1])
         user_answer = parts[2].lower()
         
-        logger.info(f"🔍 معالجة: سؤال {question_num}، إجابة {user_answer}")
+        logger.info(f"🔍 معالجة: السؤال {question_num}، الإجابة {user_answer}")
         
-        # التحقق من صحة الإجابة
+        # التحقق من صحة السؤال
         if question_num not in session['answers']:
-            logger.error(f"❌ السؤال {question_num} غير موجود في الجلسة")
+            logger.error(f"❌ السؤال {question_num} غير موجود")
             return
+        
+        # تسجيل وقت الإجابة
+        answer_time = datetime.now()
         
         # حفظ إجابة المستخدم
         session['answers'][question_num]['user_answer'] = user_answer
+        session['answers'][question_num]['answered_at'] = answer_time
+        
+        # حساب زمن الاستجابة (إذا كان هناك وقت بدء للسؤال)
+        if 'question_start_time' in session:
+            response_time = (answer_time - session['question_start_time']).total_seconds()
+            session['answers'][question_num]['response_time'] = response_time
         
         # التحقق إذا كانت الإجابة صحيحة
         correct_answer = session['answers'][question_num]['correct_answer']
-        if user_answer == correct_answer:
-            session['answers'][question_num]['is_correct'] = True
+        is_correct = user_answer == correct_answer
+        session['answers'][question_num]['is_correct'] = is_correct
+        
+        if is_correct:
             session['score'] += 1
             logger.info(f"✅ إجابة صحيحة! السؤال: {question_num}")
         else:
             logger.info(f"❌ إجابة خاطئة! السؤال: {question_num}")
         
-        # تحديث زر الإجابة لإظهار الاختيار
-        await update_button_with_selection(query, question_num, user_answer, correct_answer)
+        # تحديث الرسالة لإظهار الاختيار
+        emoji = "✅" if is_correct else "❌"
+        answer_text = "صح" if user_answer == 't' else "خطأ" if user_answer == 'f' else user_answer.upper()
         
-        # الانتقال للسؤال التالي بعد تأخير
+        await query.edit_message_caption(
+            caption=f"**السؤال رقم: {question_num}**\n\n{emoji} **اخترت:** {answer_text}\n\n⏳ جاري تحميل السؤال التالي...",
+            reply_markup=None,
+            parse_mode='Markdown'
+        )
+        
+        # الانتقال للسؤال التالي
         session['current_question'] += 1
-        await asyncio.sleep(1)
+        
+        # انتظار قصير ثم إرسال السؤال التالي
+        await asyncio.sleep(1.5)
+        
+        # تسجيل وقت بدء السؤال الجديد
+        session['question_start_time'] = datetime.now()
         
         # إرسال السؤال التالي
         await send_question(update, context, user_id)
         
     except Exception as e:
         logger.error(f"❌ خطأ في معالجة الإجابة: {e}", exc_info=True)
-        await query.edit_message_text("⚠️ حدث خطأ في معالجة إجابتك. الرجاء المحاولة مرة أخرى.")
-
-async def update_button_with_selection(query, question_num, user_answer, correct_answer):
-    """تحديث الأزرار لإظهار الإجابة المختارة"""
-    try:
-        # الحصول على الرسالة الأصلية
-        original_text = query.message.caption or query.message.text
         
-        # تحديث النص لإظهار الإجابة المختارة
-        updated_text = f"{original_text}\n\n✅ **تم الاختيار: {user_answer.upper()}**"
-        
-        # إزالة الأزرار بعد الاختيار
-        await query.edit_message_caption(
-            caption=updated_text,
-            reply_markup=None,
-            parse_mode='Markdown'
-        )
-        
-    except Exception as e:
-        logger.error(f"❌ خطأ في تحديث الأزرار: {e}")
-        # إذا فشل تحديث الصورة، حاول تحديث الرسالة النصية
+        # إرسال رسالة خطأ للمستخدم
         try:
-            await query.edit_message_text(
-                text=f"✅ **تم اختيار الإجابة: {user_answer.upper()}**\n\nجاري تحميل السؤال التالي...",
-                reply_markup=None,
-                parse_mode='Markdown'
+            await query.edit_message_caption(
+                caption="⚠️ **حدث خطأ في معالجة إجابتك**\n\nالرجاء المحاولة مرة أخرى أو اضغط /start",
+                reply_markup=None
             )
-        except Exception as e2:
-            logger.error(f"❌ خطأ في تحديث النص: {e2}")
+        except:
+            await context.bot.send_message(
+                chat_id=query.message.chat.id,
+                text="⚠️ حدث خطأ. الرجاء المحاولة مرة أخرى."
+            )
 
 async def show_results(update: Update, context: ContextTypes.DEFAULT_TYPE, user_id: int = None):
     """عرض النتائج"""
     if user_id is None:
-        user_id = update.effective_user.id
+        if hasattr(update, 'message'):
+            user_id = update.effective_user.id
+        elif hasattr(update, 'callback_query'):
+            user_id = update.callback_query.from_user.id
+        else:
+            return
     
     if user_id not in user_sessions:
+        message_text = "⚠️ **لا توجد جلسة نشطة**\n\nاضغط /start للبدء"
+        
         if hasattr(update, 'message'):
-            await update.message.reply_text("⚠️ لا توجد جلسة نشطة. اضغط /start للبدء")
+            await update.message.reply_text(message_text, parse_mode='Markdown')
+        else:
+            await context.bot.send_message(
+                chat_id=update.callback_query.message.chat.id,
+                text=message_text,
+                parse_mode='Markdown'
+            )
         return
     
     session = user_sessions[user_id]
@@ -374,8 +468,31 @@ async def show_results(update: Update, context: ContextTypes.DEFAULT_TYPE, user_
     score = session['score']
     percentage = (score / total) * 100 if total > 0 else 0
     
+    # حساب الوقت المستغرق
+    if session.get('start_time') and session.get('end_time'):
+        time_taken = session['end_time'] - session['start_time']
+        minutes = int(time_taken.total_seconds() // 60)
+        seconds = int(time_taken.total_seconds() % 60)
+        time_str = f"{minutes} دقيقة و{seconds} ثانية"
+    else:
+        time_str = "غير محسوب"
+    
+    # تحديد المستوى
+    if percentage >= 90:
+        level = "ممتاز 🏆"
+    elif percentage >= 75:
+        level = "جيد جداً ⭐"
+    elif percentage >= 50:
+        level = "مقبول ✓"
+    else:
+        level = "ضعف 📉"
+    
     # إنشاء تفاصيل الإجابات
     details = "📊 **تفاصيل الإجابات:**\n\n"
+    
+    # تجميع الإجابات الصحيحة والخاطئة
+    correct_answers_list = []
+    wrong_answers_list = []
     
     for q_num in sorted(session['answers'].keys()):
         ans = session['answers'][q_num]
@@ -383,29 +500,56 @@ async def show_results(update: Update, context: ContextTypes.DEFAULT_TYPE, user_
         correct_ans = ans['correct_answer']
         is_correct = ans['is_correct']
         
-        emoji = "✅" if is_correct else "❌"
-        details += f"{emoji} سؤال {q_num}: إجابتك ({user_ans.upper()}) | الصحيحة ({correct_ans.upper()})\n"
+        # تحويل الإجابات لشكل مقروء
+        user_display = "صح" if user_ans == 't' else "خطأ" if user_ans == 'f' else user_ans.upper()
+        correct_display = "صح" if correct_ans == 't' else "خطأ" if correct_ans == 'f' else correct_ans.upper()
+        
+        if is_correct:
+            correct_answers_list.append(f"✅ سؤال {q_num}: إجابتك ({user_display})")
+        else:
+            wrong_answers_list.append(f"❌ سؤال {q_num}: إجابتك ({user_display}) | الصحيحة ({correct_display})")
     
-    # رسالة النتيجة
+    # إضافة الإجابات الصحيحة أولاً
+    for item in correct_answers_list[:10]:  # عرض أول 10 فقط لتجنب الرسالة الطويلة
+        details += item + "\n"
+    
+    if len(correct_answers_list) > 10:
+        details += f"✅ +{len(correct_answers_list) - 10} إجابة صحيحة أخرى\n"
+    
+    # إضافة الإجابات الخاطئة
+    for item in wrong_answers_list[:10]:  # عرض أول 10 فقط
+        details += item + "\n"
+    
+    if len(wrong_answers_list) > 10:
+        details += f"❌ +{len(wrong_answers_list) - 10} إجابة خاطئة أخرى\n"
+    
+    # رسالة النتيجة النهائية
     result_message = (
         f"🎉 **تم الانتهاء من الاختبار!**\n\n"
         f"📈 **النتيجة النهائية:**\n"
-        f"• عدد الأسئلة: {total}\n"
-        f"• الإجابات الصحيحة: {score}\n"
-        f"• النسبة المئوية: {percentage:.1f}%\n"
-        f"• المستوى: {'ممتاز 🏆' if percentage >= 90 else 'جيد جداً ⭐' if percentage >= 75 else 'مقبول ✓' if percentage >= 50 else 'ضعف 📉'}\n\n"
+        f"• 👤 الطالب: {session['username']}\n"
+        f"• 📊 عدد الأسئلة: {total}\n"
+        f"• ✅ الإجابات الصحيحة: {score}\n"
+        f"• ❌ الإجابات الخاطئة: {total - score}\n"
+        f"• 📈 النسبة المئوية: {percentage:.1f}%\n"
+        f"• 🏆 المستوى: {level}\n"
+        f"• ⏰ الوقت المستغرق: {time_str}\n\n"
         f"{details}\n"
-        f"🔄 لإعادة الاختبار: /start"
+        f"🔄 **لإعادة الاختبار:**\n"
+        f"اضغط /start ثم /begin"
     )
     
+    # إرسال النتيجة
     await context.bot.send_message(
         chat_id=update.effective_chat.id if hasattr(update, 'message') else update.callback_query.message.chat.id,
         text=result_message,
         parse_mode='Markdown'
     )
     
+    # تحديث حالة الجلسة
     session['completed'] = True
-    logger.info(f"📊 المستخدم {user_id} حصل على {score}/{total} ({percentage:.1f}%)")
+    
+    logger.info(f"📊 النتيجة: {user_id} - {score}/{total} ({percentage:.1f}%)")
 
 async def results_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """عرض النتيجة الحالية"""
@@ -414,77 +558,133 @@ async def results_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
 async def help_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """عرض رسالة المساعدة"""
     help_text = (
-        "🤖 **بوت اختبار الرياضيات**\n\n"
-        "📋 **الأوامر:**\n"
+        "🤖 **بوت اختبار الرياضيات - التعليمات**\n\n"
+        "📋 **الأوامر المتاحة:**\n"
         "/start - بدء جلسة جديدة\n"
         "/begin - بدء الاختبار\n"
         "/results - عرض النتائج\n"
-        "/help - المساعدة\n\n"
+        "/help - عرض هذه التعليمات\n\n"
         "🎯 **أنواع الأسئلة:**\n"
-        "• 1-19: صح/خطأ\n"
-        "• 20-45: اختيار من متعدد"
+        "• الأسئلة 1-19: صح/خطأ (✅/❌)\n"
+        "• الأسئلة 20-45: اختيار من متعدد (أ/ب/ج/د)\n\n"
+        "⚠️ **ملاحظات:**\n"
+        "• يمكنك إعادة الاختبار متى شئت\n"
+        "• النتائج تحفظ خلال الجلسة فقط\n"
+        "• اضغط على الزر المناسب للإجابة"
     )
     await update.message.reply_text(help_text, parse_mode='Markdown')
 
-async def test_buttons(update: Update, context: ContextTypes.DEFAULT_TYPE):
+async def status_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """عرض حالة البوت"""
+    user_id = update.effective_user.id
+    
+    status_text = (
+        f"🔍 **حالة البوت**\n\n"
+        f"• ✅ البوت يعمل بنجاح\n"
+        f"• 📊 عدد الأسئلة: {len(correct_answers)}\n"
+        f"• 👥 المستخدمون النشطون: {len(user_sessions)}\n"
+        f"• 🕐 وقت التشغيل: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}\n\n"
+    )
+    
+    if user_id in user_sessions:
+        session = user_sessions[user_id]
+        status_text += f"📋 **حالتك الحالية:**\n"
+        status_text += f"• 👤 الاسم: {session['username']}\n"
+        status_text += f"• 📝 السؤال الحالي: {session['current_question']}/{session['total_questions']}\n"
+        status_text += f"• ✅ النقاط: {session['score']}\n"
+        status_text += f"• 🏁 الحالة: {'مكتمل' if session['completed'] else 'قيد التقدم'}\n\n"
+    
+    status_text += "🔄 لبدء الاختبار: /begin\n"
+    status_text += "📊 لعرض النتائج: /results"
+    
+    await update.message.reply_text(status_text, parse_mode='Markdown')
+
+async def test_button_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """اختبار الأزرار"""
     keyboard = [
         [
-            InlineKeyboardButton("زر اختبار 1", callback_data="test_1"),
-            InlineKeyboardButton("زر اختبار 2", callback_data="test_2")
+            InlineKeyboardButton("زر اختبار 1 ✅", callback_data="test_1"),
+            InlineKeyboardButton("زر اختبار 2 ❌", callback_data="test_2")
         ]
     ]
     reply_markup = InlineKeyboardMarkup(keyboard)
     
     await update.message.reply_text(
-        "🔘 **اختبار الأزرار**\n\nاضغط على أي زر:",
-        reply_markup=reply_markup
+        "🔘 **اختبار الأزرار**\n\nاضغط على أي زر للتحقق من عمل الأزرار:",
+        reply_markup=reply_markup,
+        parse_mode='Markdown'
     )
 
 async def handle_test_button(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """معالجة أزرار الاختبار"""
     query = update.callback_query
-    await query.answer(f"ضغطت على: {query.data}")
+    await query.answer(f"✅ تم الضغط على {query.data}")
     
     await query.edit_message_text(
-        text=f"✅ **تم الضغط بنجاح!**\n\nالزر: {query.data}\n\nهذا يثبت أن الأزرار تعمل.",
+        text=f"🎉 **الأزرار تعمل بنجاح!**\n\nالزر المضغوط: `{query.data}`\n\n✅ يمكنك الآن استخدام /begin لبدء الاختبار",
         parse_mode='Markdown'
     )
 
 def main():
-    """الدالة الرئيسية"""
+    """الدالة الرئيسية لتشغيل البوت"""
     logger.info("🚀 بدء تشغيل بوت الرياضيات...")
     
+    # التحقق من التوكن
     if not TOKEN:
-        logger.error("❌ TOKEN غير موجود!")
+        logger.error("❌ TOKEN غير موجود! تأكد من إعداد TELEGRAM_BOT_TOKEN")
+        logger.info("💡 التعليمات:")
+        logger.info("1. اذهب إلى Render Dashboard")
+        logger.info("2. اختر خدمتك")
+        logger.info("3. اضغط على Environment")
+        logger.info("4. أضف متغير: TELEGRAM_BOT_TOKEN = توكن_البوت_هنا")
         return
+    
+    logger.info(f"✅ التوكن موجود وتم التحقق منه")
+    
+    # التحقق من وجود مجلد الصور
+    logger.info("🔍 التحقق من هيكل المجلدات...")
+    
+    if os.path.exists(IMAGES_BASE_DIR):
+        logger.info(f"✅ مجلد {IMAGES_BASE_DIR} موجود")
+        
+        # التحقق من المجلدات الفرعية
+        for folder in ["True or False", "mcq"]:
+            folder_path = os.path.join(IMAGES_BASE_DIR, folder)
+            if os.path.exists(folder_path):
+                files = [f for f in os.listdir(folder_path) if f.lower().endswith(('.png', '.jpg', '.jpeg'))]
+                logger.info(f"📁 {folder}: {len(files)} صورة")
+            else:
+                logger.warning(f"⚠️ مجلد {folder} غير موجود")
+    else:
+        logger.warning(f"⚠️ مجلد {IMAGES_BASE_DIR} غير موجود!")
     
     # إنشاء التطبيق
     application = Application.builder().token(TOKEN).build()
     
-    # إضافة handlers
+    # إضافة handlers للأوامر
     application.add_handler(CommandHandler("start", start))
     application.add_handler(CommandHandler("begin", begin_test))
     application.add_handler(CommandHandler("results", results_command))
     application.add_handler(CommandHandler("help", help_command))
-    application.add_handler(CommandHandler("test", test_buttons))  # لأغراض الاختبار
+    application.add_handler(CommandHandler("status", status_command))
+    application.add_handler(CommandHandler("test", test_button_command))
     
-    # handler للأسئلة
+    # إضافة handlers للأزرار
     application.add_handler(CallbackQueryHandler(handle_answer, pattern="^ans_"))
-    
-    # handler لأزرار الاختبار
     application.add_handler(CallbackQueryHandler(handle_test_button, pattern="^test_"))
     
     # التحقق إذا كان على Render
     is_render = os.getenv('RENDER', '').lower() in ['true', '1', 'yes']
     
     if is_render:
-        # استخدام webhook
+        # على Render - استخدام webhook
         render_service_name = os.getenv('RENDER_SERVICE_NAME', 'math-limits-bot2')
         webhook_url = f"https://{render_service_name}.onrender.com/{TOKEN}"
         
-        logger.info(f"🌐 استخدام webhook: {webhook_url}")
+        logger.info(f"🌐 استخدام webhook على Render")
+        logger.info(f"📡 Webhook URL: {webhook_url}")
         
+        # بدء webhook
         application.run_webhook(
             listen="0.0.0.0",
             port=PORT,
@@ -493,8 +693,8 @@ def main():
             drop_pending_updates=True
         )
     else:
-        # استخدام polling
-        logger.info("💻 التشغيل محلياً")
+        # محلي - استخدام polling
+        logger.info("💻 التشغيل محلياً باستخدام polling...")
         application.run_polling(
             drop_pending_updates=True,
             allowed_updates=Update.ALL_TYPES
