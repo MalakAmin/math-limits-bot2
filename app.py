@@ -2,6 +2,7 @@ import os
 import sys
 import logging
 import asyncio
+import json
 
 # إعداد logging أولاً
 logging.basicConfig(
@@ -10,9 +11,6 @@ logging.basicConfig(
 )
 logger = logging.getLogger(__name__)
 
-# التحقق من إصدار Python
-logger.info(f"Python version: {sys.version}")
-
 # استيراد المكتبات
 try:
     from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup
@@ -20,7 +18,8 @@ try:
         Application, 
         CommandHandler, 
         CallbackQueryHandler,
-        ContextTypes
+        ContextTypes,
+        filters
     )
     from dotenv import load_dotenv
     import pandas as pd
@@ -37,52 +36,27 @@ TOKEN = os.getenv('TELEGRAM_BOT_TOKEN', '')
 PORT = int(os.environ.get('PORT', 10000))
 IMAGES_BASE_DIR = 'Images'
 
+# تحميل الإجابات الصحيحة
 def load_correct_answers():
     """تحميل الإجابات الصحيحة من ملف Excel"""
     try:
-        # قراءة ملف Excel
         df = pd.read_excel('Answers.xlsx')
         logger.info(f"✅ تم تحميل ملف Excel بنجاح")
-        logger.info(f"📊 شكل البيانات: {df.shape}")
         
-        # عرض أسماء الأعمدة كما يراها pandas
-        logger.info(f"📋 أسماء الأعمدة في pandas: {list(df.columns)}")
-        
-        # تنظيف أسماء الأعمدة (إزالة مسافات زائدة)
+        # تنظيف أسماء الأعمدة
         df.columns = df.columns.str.strip()
-        logger.info(f"📋 أسماء الأعمدة بعد التنظيف: {list(df.columns)}")
         
-        # التحقق من وجود الأعمدة المطلوبة
-        required_columns = ['image number', 'Question Type', 'answer']
-        missing_columns = [col for col in required_columns if col not in df.columns]
-        
-        if missing_columns:
-            logger.error(f"❌ الأعمدة الناقصة: {missing_columns}")
-            logger.error(f"❌ الأعمدة الموجودة: {list(df.columns)}")
-            return create_mock_data()
+        # التحقق من الأعمدة
+        logger.info(f"📋 أسماء الأعمدة: {list(df.columns)}")
         
         # إنشاء قاموس للإجابات الصحيحة
         correct_answers = {}
         
         for idx, row in df.iterrows():
             try:
-                # استخدام الأسماء الصحيحة للأعمدة
                 question_num = int(row['image number'])
                 q_type = str(row['Question Type']).strip().lower()
                 answer = str(row['answer']).strip().lower()
-                
-                # التحقق من صحة البيانات
-                if q_type not in ['tf', 'mcq']:
-                    logger.warning(f"⚠️ نوع سؤال غير معروف في الصف {idx+1}: {q_type}")
-                    q_type = 'tf' if question_num <= 19 else 'mcq'
-                
-                if q_type == 'tf' and answer not in ['t', 'f']:
-                    logger.warning(f"⚠️ إجابة tf غير صحيحة في الصف {idx+1}: {answer}")
-                    answer = 't' if answer in ['true', 'صحيح', 'صح'] else 'f'
-                
-                if q_type == 'mcq' and answer not in ['a', 'b', 'c', 'd']:
-                    logger.warning(f"⚠️ إجابة mcq غير صحيحة في الصف {idx+1}: {answer}")
-                    answer = 'a'  # قيمة افتراضية
                 
                 correct_answers[question_num] = {
                     'type': q_type,
@@ -91,31 +65,16 @@ def load_correct_answers():
                     'is_correct': False
                 }
                 
-                logger.debug(f"📝 سؤال {question_num}: نوع={q_type}, إجابة={answer}")
-                
             except Exception as e:
-                logger.warning(f"⚠️ خطأ في معالجة الصف {idx+1}: {e}")
-                logger.warning(f"⚠️ بيانات الصف: {row.to_dict()}")
+                logger.warning(f"⚠️ خطأ في الصف {idx+1}: {e}")
                 continue
         
         logger.info(f"📊 تم تحميل {len(correct_answers)} إجابة صحيحة")
-        
-        # عرض إحصائيات
-        tf_count = sum(1 for q in correct_answers.values() if q['type'] == 'tf')
-        mcq_count = sum(1 for q in correct_answers.values() if q['type'] == 'mcq')
-        logger.info(f"📈 الإحصائيات: TF={tf_count}, MCQ={mcq_count}")
-        
-        # عرض عينة
-        logger.info("🔍 عينة من الأسئلة:")
-        for q_num in sorted(correct_answers.keys())[:10]:
-            data = correct_answers[q_num]
-            logger.info(f"  {q_num}: {data['type']} -> {data['correct_answer']}")
-        
         return correct_answers
     
     except Exception as e:
-        logger.error(f"❌ خطأ في تحميل ملف Excel: {e}", exc_info=True)
-        logger.info("📝 جاري إنشاء بيانات وهمية للاختبار...")
+        logger.error(f"❌ خطأ في تحميل ملف Excel: {e}")
+        # إنشاء بيانات وهمية
         return create_mock_data()
 
 def create_mock_data():
@@ -152,18 +111,31 @@ def get_image_path(question_num):
         return None
     
     # مسارات محتملة
-    base_paths = [
-        os.path.join(IMAGES_BASE_DIR, folder, f"{question_num}.png"),
-        os.path.join(IMAGES_BASE_DIR, folder, f"{question_num}.jpg"),
-        os.path.join(IMAGES_BASE_DIR, folder, f"{question_num}.PNG"),
-        os.path.join(IMAGES_BASE_DIR, folder, f"{question_num}.JPG"),
-        os.path.join('images', folder, f"{question_num}.png"),  # حرف صغير
-    ]
+    base_path = os.path.join(IMAGES_BASE_DIR, folder)
     
-    for path in base_paths:
+    if not os.path.exists(base_path):
+        logger.error(f"❌ المجلد غير موجود: {base_path}")
+        return None
+    
+    # البحث عن الصورة بأي امتداد
+    possible_extensions = ['.png', '.jpg', '.jpeg', '.PNG', '.JPG', '.JPEG']
+    
+    for ext in possible_extensions:
+        path = os.path.join(base_path, f"{question_num}{ext}")
         if os.path.exists(path):
             logger.debug(f"📸 وجدت صورة: {path}")
             return path
+    
+    # محاولة العثور على أي ملف يبدأ برقم السؤال
+    try:
+        files = os.listdir(base_path)
+        for file in files:
+            if file.startswith(str(question_num)):
+                path = os.path.join(base_path, file)
+                logger.debug(f"📸 وجدت صورة (بالاسم): {path}")
+                return path
+    except Exception as e:
+        logger.error(f"❌ خطأ في قراءة المجلد: {e}")
     
     logger.warning(f"⚠️ لم أجد صورة للسؤال {question_num}")
     return None
@@ -182,27 +154,14 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
         "📚 **مرحباً بك في بوت اختبار الرياضيات!**\n\n"
         "🎯 **معلومات عن الاختبار:**\n"
         "• الأسئلة 1-19: صح/خطأ ✅/❌\n"
-        "• الأسئلة 20-45: اختيار من متعدد 🔠\n"
-        "• عدد الأسئلة: 45 سؤالاً\n\n"
+        "• الأسئلة 20-45: اختيار من متعدد 🔠\n\n"
         "🔄 **لبدء الاختبار:**\n"
-        "اضغط /begin\n\n"
-        "❓ **للمساعدة:** /help\n"
-        "🔍 **لفحص الحالة:** /check"
+        "اضغط /begin"
     )
 
 async def begin_test(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """بدء إرسال الأسئلة"""
     user_id = update.effective_user.id
-    
-    if user_id in user_sessions and not user_sessions[user_id]['completed']:
-        await update.message.reply_text(
-            "⚠️ لديك اختبار قيد التقدم!\n"
-            "📊 لرؤية النتائج: /results\n"
-            "🔄 لبدء اختبار جديد: /start"
-        )
-        return
-    
-    logger.info(f"🚀 المستخدم {user_id} بدأ الاختبار")
     
     # تهيئة جلسة المستخدم
     user_sessions[user_id] = {
@@ -211,7 +170,8 @@ async def begin_test(update: Update, context: ContextTypes.DEFAULT_TYPE):
         'score': 0,
         'answers': {},
         'completed': False,
-        'username': update.effective_user.username or update.effective_user.first_name
+        'username': update.effective_user.username or update.effective_user.first_name,
+        'message_id': None  # لحفظ معرف الرسالة
     }
     
     # نسخ الإجابات الصحيحة
@@ -264,18 +224,18 @@ async def send_question(update: Update, context: ContextTypes.DEFAULT_TYPE, user
     if question_data['type'] == 'tf':
         keyboard = [
             [
-                InlineKeyboardButton("✅ صح (True)", callback_data=f"answer_{question_num}_t"),
-                InlineKeyboardButton("❌ خطأ (False)", callback_data=f"answer_{question_num}_f")
+                InlineKeyboardButton("✅ صح (True)", callback_data=f"ans_{question_num}_t"),
+                InlineKeyboardButton("❌ خطأ (False)", callback_data=f"ans_{question_num}_f")
             ]
         ]
         question_type_text = "📝 **سؤال صح/خطأ**"
     else:
         keyboard = [
             [
-                InlineKeyboardButton("أ", callback_data=f"answer_{question_num}_a"),
-                InlineKeyboardButton("ب", callback_data=f"answer_{question_num}_b"),
-                InlineKeyboardButton("ج", callback_data=f"answer_{question_num}_c"),
-                InlineKeyboardButton("د", callback_data=f"answer_{question_num}_d")
+                InlineKeyboardButton("أ", callback_data=f"ans_{question_num}_a"),
+                InlineKeyboardButton("ب", callback_data=f"ans_{question_num}_b"),
+                InlineKeyboardButton("ج", callback_data=f"ans_{question_num}_c"),
+                InlineKeyboardButton("د", callback_data=f"ans_{question_num}_d")
             ]
         ]
         question_type_text = "🔠 **سؤال اختيار من متعدد**"
@@ -284,29 +244,37 @@ async def send_question(update: Update, context: ContextTypes.DEFAULT_TYPE, user
     
     try:
         with open(image_path, 'rb') as photo:
-            await context.bot.send_photo(
+            # إرسال الصورة مع الأزرار
+            message = await context.bot.send_photo(
                 chat_id=update.effective_chat.id,
                 photo=photo,
                 caption=f"**السؤال رقم: {question_num}**\n{question_type_text}\n\nاختر الإجابة الصحيحة:",
                 reply_markup=reply_markup,
                 parse_mode='Markdown'
             )
+            # حفظ معرف الرسالة
+            session['message_id'] = message.message_id
+            
     except Exception as e:
         logger.error(f"❌ خطأ في إرسال الصورة: {e}")
-        await context.bot.send_message(
+        # إرسال رسالة نصية بديلة
+        message = await context.bot.send_message(
             chat_id=update.effective_chat.id,
             text=f"**السؤال رقم: {question_num}**\n{question_type_text}\n\nاختر الإجابة الصحيحة:",
             reply_markup=reply_markup,
             parse_mode='Markdown'
         )
+        session['message_id'] = message.message_id
 
 async def handle_answer(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """معالجة إجابة المستخدم"""
     query = update.callback_query
+    
+    # الرد على callback query أولاً
     await query.answer()
     
     user_id = query.from_user.id
-    logger.info(f"📝 المستخدم {user_id} أجاب على سؤال")
+    logger.info(f"📝 المستخدم {user_id} ضغط على زر: {query.data}")
     
     if user_id not in user_sessions:
         await query.edit_message_text("⚠️ الجلسة منتهية. اضغط /start للبدء")
@@ -314,18 +282,28 @@ async def handle_answer(update: Update, context: ContextTypes.DEFAULT_TYPE):
     
     session = user_sessions[user_id]
     
-    # استخراج البيانات
+    # استخراج البيانات من callback_data
     data = query.data
-    parts = data.split('_')
+    logger.info(f"🔍 بيانات callback: {data}")
     
-    if len(parts) != 3:
-        return
-    
-    question_num = int(parts[1])
-    user_answer = parts[2]
-    
-    # حفظ إجابة المستخدم
-    if question_num in session['answers']:
+    try:
+        # التنسيق: ans_رقم_إجابة
+        parts = data.split('_')
+        if len(parts) != 3:
+            logger.error(f"❌ تنسيق callback_data غير صحيح: {data}")
+            return
+        
+        question_num = int(parts[1])
+        user_answer = parts[2].lower()
+        
+        logger.info(f"🔍 معالجة: سؤال {question_num}، إجابة {user_answer}")
+        
+        # التحقق من صحة الإجابة
+        if question_num not in session['answers']:
+            logger.error(f"❌ السؤال {question_num} غير موجود في الجلسة")
+            return
+        
+        # حفظ إجابة المستخدم
         session['answers'][question_num]['user_answer'] = user_answer
         
         # التحقق إذا كانت الإجابة صحيحة
@@ -333,24 +311,51 @@ async def handle_answer(update: Update, context: ContextTypes.DEFAULT_TYPE):
         if user_answer == correct_answer:
             session['answers'][question_num]['is_correct'] = True
             session['score'] += 1
-            logger.debug(f"✅ إجابة صحيحة للسؤال {question_num}")
+            logger.info(f"✅ إجابة صحيحة! السؤال: {question_num}")
         else:
-            logger.debug(f"❌ إجابة خاطئة للسؤال {question_num}")
-    
-    # الانتقال للسؤال التالي
-    session['current_question'] += 1
-    
-    # إرسال تأكيد
-    await query.edit_message_text(
-        f"✅ **تم حفظ إجابتك**\n"
-        f"السؤال: {question_num}\n"
-        f"إجابتك: {user_answer.upper()}\n\n"
-        f"⏳ جاري تحميل السؤال التالي..."
-    )
-    
-    # انتظار ثم إرسال السؤال التالي
-    await asyncio.sleep(1)
-    await send_question(update, context, user_id)
+            logger.info(f"❌ إجابة خاطئة! السؤال: {question_num}")
+        
+        # تحديث زر الإجابة لإظهار الاختيار
+        await update_button_with_selection(query, question_num, user_answer, correct_answer)
+        
+        # الانتقال للسؤال التالي بعد تأخير
+        session['current_question'] += 1
+        await asyncio.sleep(1)
+        
+        # إرسال السؤال التالي
+        await send_question(update, context, user_id)
+        
+    except Exception as e:
+        logger.error(f"❌ خطأ في معالجة الإجابة: {e}", exc_info=True)
+        await query.edit_message_text("⚠️ حدث خطأ في معالجة إجابتك. الرجاء المحاولة مرة أخرى.")
+
+async def update_button_with_selection(query, question_num, user_answer, correct_answer):
+    """تحديث الأزرار لإظهار الإجابة المختارة"""
+    try:
+        # الحصول على الرسالة الأصلية
+        original_text = query.message.caption or query.message.text
+        
+        # تحديث النص لإظهار الإجابة المختارة
+        updated_text = f"{original_text}\n\n✅ **تم الاختيار: {user_answer.upper()}**"
+        
+        # إزالة الأزرار بعد الاختيار
+        await query.edit_message_caption(
+            caption=updated_text,
+            reply_markup=None,
+            parse_mode='Markdown'
+        )
+        
+    except Exception as e:
+        logger.error(f"❌ خطأ في تحديث الأزرار: {e}")
+        # إذا فشل تحديث الصورة، حاول تحديث الرسالة النصية
+        try:
+            await query.edit_message_text(
+                text=f"✅ **تم اختيار الإجابة: {user_answer.upper()}**\n\nجاري تحميل السؤال التالي...",
+                reply_markup=None,
+                parse_mode='Markdown'
+            )
+        except Exception as e2:
+            logger.error(f"❌ خطأ في تحديث النص: {e2}")
 
 async def show_results(update: Update, context: ContextTypes.DEFAULT_TYPE, user_id: int = None):
     """عرض النتائج"""
@@ -372,36 +377,32 @@ async def show_results(update: Update, context: ContextTypes.DEFAULT_TYPE, user_
     # إنشاء تفاصيل الإجابات
     details = "📊 **تفاصيل الإجابات:**\n\n"
     
-    for q_num in range(1, total + 1):
-        if q_num in session['answers']:
-            ans = session['answers'][q_num]
-            user_ans = ans['user_answer'] or "لم يُجب"
-            correct_ans = ans['correct_answer']
-            is_correct = ans['is_correct']
-            
-            emoji = "✅" if is_correct else "❌"
-            details += f"{emoji} سؤال {q_num}: إجابتك ({user_ans.upper()}) | الصحيحة ({correct_ans.upper()})\n"
+    for q_num in sorted(session['answers'].keys()):
+        ans = session['answers'][q_num]
+        user_ans = ans['user_answer'] or "لم يُجب"
+        correct_ans = ans['correct_answer']
+        is_correct = ans['is_correct']
+        
+        emoji = "✅" if is_correct else "❌"
+        details += f"{emoji} سؤال {q_num}: إجابتك ({user_ans.upper()}) | الصحيحة ({correct_ans.upper()})\n"
     
     # رسالة النتيجة
     result_message = (
         f"🎉 **تم الانتهاء من الاختبار!**\n\n"
         f"📈 **النتيجة النهائية:**\n"
         f"• عدد الأسئلة: {total}\n"
-        f"• الإجابات الصحيحة: {score}/{total}\n"
+        f"• الإجابات الصحيحة: {score}\n"
         f"• النسبة المئوية: {percentage:.1f}%\n"
         f"• المستوى: {'ممتاز 🏆' if percentage >= 90 else 'جيد جداً ⭐' if percentage >= 75 else 'مقبول ✓' if percentage >= 50 else 'ضعف 📉'}\n\n"
         f"{details}\n"
         f"🔄 لإعادة الاختبار: /start"
     )
     
-    if hasattr(update, 'message'):
-        await update.message.reply_text(result_message, parse_mode='Markdown')
-    else:
-        await context.bot.send_message(
-            chat_id=update.effective_chat.id,
-            text=result_message,
-            parse_mode='Markdown'
-        )
+    await context.bot.send_message(
+        chat_id=update.effective_chat.id if hasattr(update, 'message') else update.callback_query.message.chat.id,
+        text=result_message,
+        parse_mode='Markdown'
+    )
     
     session['completed'] = True
     logger.info(f"📊 المستخدم {user_id} حصل على {score}/{total} ({percentage:.1f}%)")
@@ -413,115 +414,50 @@ async def results_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
 async def help_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """عرض رسالة المساعدة"""
     help_text = (
-        "🤖 **بوت اختبار الرياضيات - التعليمات**\n\n"
-        "📋 **الأوامر المتاحة:**\n"
+        "🤖 **بوت اختبار الرياضيات**\n\n"
+        "📋 **الأوامر:**\n"
         "/start - بدء جلسة جديدة\n"
         "/begin - بدء الاختبار\n"
         "/results - عرض النتائج\n"
-        "/check - فحص حالة البوت\n"
-        "/help - عرض التعليمات\n\n"
+        "/help - المساعدة\n\n"
         "🎯 **أنواع الأسئلة:**\n"
-        "• 1-19: صح/خطأ (✅/❌)\n"
-        "• 20-45: اختيار من متعدد (أ/ب/ج/د)\n\n"
-        "⚠️ **ملاحظات:**\n"
-        "• الإجابة لا يمكن تغييرها بعد الاختيار\n"
-        "• يمكنك إعادة الاختبار متى شئت"
+        "• 1-19: صح/خطأ\n"
+        "• 20-45: اختيار من متعدد"
     )
     await update.message.reply_text(help_text, parse_mode='Markdown')
 
-async def check_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """فحص حالة البوت"""
-    user_id = update.effective_user.id
+async def test_buttons(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """اختبار الأزرار"""
+    keyboard = [
+        [
+            InlineKeyboardButton("زر اختبار 1", callback_data="test_1"),
+            InlineKeyboardButton("زر اختبار 2", callback_data="test_2")
+        ]
+    ]
+    reply_markup = InlineKeyboardMarkup(keyboard)
     
-    # التحقق من الصور
-    tf_count = 0
-    mcq_count = 0
-    
-    if os.path.exists('Images/True or False'):
-        tf_files = [f for f in os.listdir('Images/True or False') if f.lower().endswith(('.png', '.jpg'))]
-        tf_count = len(tf_files)
-    
-    if os.path.exists('Images/mcq'):
-        mcq_files = [f for f in os.listdir('Images/mcq') if f.lower().endswith(('.png', '.jpg'))]
-        mcq_count = len(mcq_files)
-    
-    check_message = (
-        f"🔍 **فحص حالة البوت**\n\n"
-        f"• حالة البوت: ✅ نشط\n"
-        f"• عدد الأسئلة المحملة: {len(correct_answers)}\n"
-        f"• الصور المتاحة: صح/خطأ={tf_count}, MCQ={mcq_count}\n"
-        f"• جلسة المستخدم: {'✅ نشطة' if user_id in user_sessions else '❌ غير نشطة'}\n\n"
+    await update.message.reply_text(
+        "🔘 **اختبار الأزرار**\n\nاضغط على أي زر:",
+        reply_markup=reply_markup
     )
-    
-    if user_id in user_sessions:
-        session = user_sessions[user_id]
-        check_message += f"📊 **تقدمك الحالي:**\n"
-        check_message += f"• السؤال الحالي: {session['current_question']}/{session['total_questions']}\n"
-        check_message += f"• النقاط الحالية: {session['score']}\n"
-        check_message += f"• حالة الاختبار: {'مكتمل ✅' if session['completed'] else 'قيد التقدم ⏳'}\n\n"
-    
-    check_message += "🔄 لبدء الاختبار: /begin\n"
-    check_message += "📊 لعرض النتائج: /results"
-    
-    await update.message.reply_text(check_message, parse_mode='Markdown')
 
-async def debug_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """أمر تصحيح للأدمن فقط"""
-    user_id = update.effective_user.id
+async def handle_test_button(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """معالجة أزرار الاختبار"""
+    query = update.callback_query
+    await query.answer(f"ضغطت على: {query.data}")
     
-    # يمكنك تحديد ID أدمن هنا
-    admin_ids = [user_id]  # أضف IDs الأدمن هنا
-    
-    if user_id not in admin_ids:
-        await update.message.reply_text("⛔ ليس لديك صلاحية هذا الأمر")
-        return
-    
-    debug_info = (
-        f"🔧 **معلومات التصحيح**\n\n"
-        f"• إصدار Python: {sys.version}\n"
-        f"• عدد الأسئلة: {len(correct_answers)}\n"
-        f"• عدد الجلسات النشطة: {len(user_sessions)}\n"
-        f"• مجلد الصور: {'موجود ✅' if os.path.exists('Images') else 'غير موجود ❌'}\n"
-        f"• ملف Excel: {'موجود ✅' if os.path.exists('Answers.xlsx') else 'غير موجود ❌'}\n"
-        f"• التوكن: {'مضبوط ✅' if TOKEN else 'غير مضبوط ❌'}\n"
+    await query.edit_message_text(
+        text=f"✅ **تم الضغط بنجاح!**\n\nالزر: {query.data}\n\nهذا يثبت أن الأزرار تعمل.",
+        parse_mode='Markdown'
     )
-    
-    await update.message.reply_text(debug_info, parse_mode='Markdown')
 
 def main():
     """الدالة الرئيسية"""
     logger.info("🚀 بدء تشغيل بوت الرياضيات...")
     
-    # التحقق من التوكن
     if not TOKEN:
-        logger.error("❌ TOKEN غير موجود! تأكد من إعداد TELEGRAM_BOT_TOKEN")
-        logger.info("💡 التعليمات:")
-        logger.info("1. اذهب إلى Render Dashboard")
-        logger.info("2. اختر خدمتك")
-        logger.info("3. اضغط على Environment")
-        logger.info("4. أضف متغير: TELEGRAM_BOT_TOKEN = توكن_البوت_هنا")
+        logger.error("❌ TOKEN غير موجود!")
         return
-    
-    logger.info(f"✅ التوكن موجود")
-    
-    # التحقق من مجلد الصور
-    logger.info("🔍 التحقق من هيكل المجلدات...")
-    
-    if os.path.exists('Images'):
-        logger.info("✅ مجلد Images موجود")
-        if os.path.exists('Images/True or False'):
-            tf_files = [f for f in os.listdir('Images/True or False') if f.lower().endswith(('.png', '.jpg'))]
-            logger.info(f"📁 True or False: {len(tf_files)} صورة")
-        else:
-            logger.warning("⚠️ مجلد True or False غير موجود")
-            
-        if os.path.exists('Images/mcq'):
-            mcq_files = [f for f in os.listdir('Images/mcq') if f.lower().endswith(('.png', '.jpg'))]
-            logger.info(f"📁 mcq: {len(mcq_files)} صورة")
-        else:
-            logger.warning("⚠️ مجلد mcq غير موجود")
-    else:
-        logger.warning("⚠️ مجلد Images غير موجود!")
     
     # إنشاء التطبيق
     application = Application.builder().token(TOKEN).build()
@@ -531,22 +467,24 @@ def main():
     application.add_handler(CommandHandler("begin", begin_test))
     application.add_handler(CommandHandler("results", results_command))
     application.add_handler(CommandHandler("help", help_command))
-    application.add_handler(CommandHandler("check", check_command))
-    application.add_handler(CommandHandler("debug", debug_command))
-    application.add_handler(CallbackQueryHandler(handle_answer))
+    application.add_handler(CommandHandler("test", test_buttons))  # لأغراض الاختبار
+    
+    # handler للأسئلة
+    application.add_handler(CallbackQueryHandler(handle_answer, pattern="^ans_"))
+    
+    # handler لأزرار الاختبار
+    application.add_handler(CallbackQueryHandler(handle_test_button, pattern="^test_"))
     
     # التحقق إذا كان على Render
     is_render = os.getenv('RENDER', '').lower() in ['true', '1', 'yes']
     
     if is_render:
-        # على Render - استخدام webhook
+        # استخدام webhook
         render_service_name = os.getenv('RENDER_SERVICE_NAME', 'math-limits-bot2')
         webhook_url = f"https://{render_service_name}.onrender.com/{TOKEN}"
         
-        logger.info(f"🌐 استخدام webhook على Render")
-        logger.info(f"📡 Webhook URL: {webhook_url}")
+        logger.info(f"🌐 استخدام webhook: {webhook_url}")
         
-        # بدء webhook
         application.run_webhook(
             listen="0.0.0.0",
             port=PORT,
@@ -555,8 +493,8 @@ def main():
             drop_pending_updates=True
         )
     else:
-        # محلي - استخدام polling
-        logger.info("💻 التشغيل محلياً باستخدام polling...")
+        # استخدام polling
+        logger.info("💻 التشغيل محلياً")
         application.run_polling(
             drop_pending_updates=True,
             allowed_updates=Update.ALL_TYPES
