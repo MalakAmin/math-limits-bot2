@@ -36,7 +36,7 @@ TOKEN = os.getenv('TELEGRAM_BOT_TOKEN', '')
 PORT = int(os.environ.get('PORT', 10000))
 IMAGES_BASE_DIR = 'Images'
 
-# البيانات الثابتة من ملف Excel
+# البيانات الثابتة من ملف Excel - تم تقليلها إلى 10 صح/خطأ و 10 اختيارات
 CORRECT_ANSWERS_DATA = {
     1: {'type': 'tf', 'correct_answer': 't'},
     2: {'type': 'tf', 'correct_answer': 't'},
@@ -48,15 +48,6 @@ CORRECT_ANSWERS_DATA = {
     8: {'type': 'tf', 'correct_answer': 'f'},
     9: {'type': 'tf', 'correct_answer': 'f'},
     10: {'type': 'tf', 'correct_answer': 'f'},
-    11: {'type': 'tf', 'correct_answer': 't'},
-    12: {'type': 'tf', 'correct_answer': 't'},
-    13: {'type': 'tf', 'correct_answer': 'f'},
-    14: {'type': 'tf', 'correct_answer': 'f'},
-    15: {'type': 'tf', 'correct_answer': 'f'},
-    16: {'type': 'tf', 'correct_answer': 'f'},
-    17: {'type': 'tf', 'correct_answer': 't'},
-    18: {'type': 'tf', 'correct_answer': 'f'},
-    19: {'type': 'tf', 'correct_answer': 'f'},
     20: {'type': 'mcq', 'correct_answer': 'c'},
     21: {'type': 'mcq', 'correct_answer': 'b'},
     22: {'type': 'mcq', 'correct_answer': 'c'},
@@ -67,22 +58,6 @@ CORRECT_ANSWERS_DATA = {
     27: {'type': 'mcq', 'correct_answer': 'a'},
     28: {'type': 'mcq', 'correct_answer': 'd'},
     29: {'type': 'mcq', 'correct_answer': 'c'},
-    30: {'type': 'mcq', 'correct_answer': 'b'},
-    31: {'type': 'mcq', 'correct_answer': 'a'},
-    32: {'type': 'mcq', 'correct_answer': 'd'},
-    33: {'type': 'mcq', 'correct_answer': 'c'},
-    34: {'type': 'mcq', 'correct_answer': 'a'},
-    35: {'type': 'mcq', 'correct_answer': 'c'},
-    36: {'type': 'mcq', 'correct_answer': 'd'},
-    37: {'type': 'mcq', 'correct_answer': 'a'},
-    38: {'type': 'mcq', 'correct_answer': 'a'},
-    39: {'type': 'mcq', 'correct_answer': 'c'},
-    40: {'type': 'mcq', 'correct_answer': 'b'},
-    41: {'type': 'mcq', 'correct_answer': 'b'},
-    42: {'type': 'mcq', 'correct_answer': 'c'},
-    43: {'type': 'mcq', 'correct_answer': 'd'},
-    44: {'type': 'mcq', 'correct_answer': 'd'},
-    45: {'type': 'mcq', 'correct_answer': 'a'}
 }
 
 def load_correct_answers():
@@ -111,9 +86,9 @@ def load_correct_answers():
 
 def get_image_path(question_num):
     """الحصول على مسار الصورة بناءً على رقم السؤال"""
-    if 1 <= question_num <= 19:
+    if 1 <= question_num <= 10:
         folder = "True or False"
-    elif 20 <= question_num <= 45:
+    elif 20 <= question_num <= 29:
         folder = "mcq"
     else:
         logger.error(f"❌ رقم سؤال غير صحيح: {question_num}")
@@ -180,9 +155,9 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     welcome_text = (
         "📚 **مرحباً بك في بوت اختبار الرياضيات!**\n\n"
         "🎯 **معلومات عن الاختبار:**\n"
-        "• الأسئلة 1-19: صح/خطأ ✅/❌\n"
-        "• الأسئلة 20-45: اختيار من متعدد 🔠\n"
-        "• عدد الأسئلة: 45 سؤالاً\n\n"
+        "• الأسئلة 1-10: صح/خطأ ✅/❌\n"
+        "• الأسئلة 20-29: اختيار من متعدد 🔠\n"
+        "• عدد الأسئلة: 20 سؤالاً\n\n"
         "📝 **كيفية الاستخدام:**\n"
         "1. اضغط /begin لبدء الاختبار\n"
         "2. اختر الإجابة المناسبة لكل سؤال\n"
@@ -292,13 +267,13 @@ async def send_question(update: Update, context: ContextTypes.DEFAULT_TYPE, user
         ]
         question_type_text = "📝 **سؤال صح/خطأ**"
     else:
-        # أزرار MCQ
+        # أزرار MCQ - تم تغييرها إلى أحرف إنجليزية A, B, C, D
         keyboard = [
             [
-                InlineKeyboardButton("أ", callback_data=f"ans_{question_num}_a"),
-                InlineKeyboardButton("ب", callback_data=f"ans_{question_num}_b"),
-                InlineKeyboardButton("ج", callback_data=f"ans_{question_num}_c"),
-                InlineKeyboardButton("د", callback_data=f"ans_{question_num}_d")
+                InlineKeyboardButton("A", callback_data=f"ans_{question_num}_a"),
+                InlineKeyboardButton("B", callback_data=f"ans_{question_num}_b"),
+                InlineKeyboardButton("C", callback_data=f"ans_{question_num}_c"),
+                InlineKeyboardButton("D", callback_data=f"ans_{question_num}_d")
             ]
         ]
         question_type_text = "🔠 **سؤال اختيار من متعدد**"
@@ -403,7 +378,14 @@ async def handle_answer(update: Update, context: ContextTypes.DEFAULT_TYPE):
         
         # تحديث الرسالة لإظهار الاختيار
         emoji = "✅" if is_correct else "❌"
-        answer_text = "صح" if user_answer == 't' else "خطأ" if user_answer == 'f' else user_answer.upper()
+        
+        # تحويل الإجابة إلى نص مناسب للعرض
+        if user_answer == 't':
+            answer_text = "صح"
+        elif user_answer == 'f':
+            answer_text = "خطأ"
+        else:
+            answer_text = user_answer.upper()
         
         await query.edit_message_caption(
             caption=f"**السؤال رقم: {question_num}**\n\n{emoji} **اخترت:** {answer_text}\n\n⏳ جاري تحميل السؤال التالي...",
@@ -501,8 +483,19 @@ async def show_results(update: Update, context: ContextTypes.DEFAULT_TYPE, user_
         is_correct = ans['is_correct']
         
         # تحويل الإجابات لشكل مقروء
-        user_display = "صح" if user_ans == 't' else "خطأ" if user_ans == 'f' else user_ans.upper()
-        correct_display = "صح" if correct_ans == 't' else "خطأ" if correct_ans == 'f' else correct_ans.upper()
+        if user_ans == 't':
+            user_display = "صح"
+        elif user_ans == 'f':
+            user_display = "خطأ"
+        else:
+            user_display = user_ans.upper()
+        
+        if correct_ans == 't':
+            correct_display = "صح"
+        elif correct_ans == 'f':
+            correct_display = "خطأ"
+        else:
+            correct_display = correct_ans.upper()
         
         if is_correct:
             correct_answers_list.append(f"✅ سؤال {q_num}: إجابتك ({user_display})")
@@ -565,8 +558,8 @@ async def help_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
         "/results - عرض النتائج\n"
         "/help - عرض هذه التعليمات\n\n"
         "🎯 **أنواع الأسئلة:**\n"
-        "• الأسئلة 1-19: صح/خطأ (✅/❌)\n"
-        "• الأسئلة 20-45: اختيار من متعدد (أ/ب/ج/د)\n\n"
+        "• الأسئلة 1-10: صح/خطأ (✅/❌)\n"
+        "• الأسئلة 20-29: اختيار من متعدد (A/B/C/D)\n\n"
         "⚠️ **ملاحظات:**\n"
         "• يمكنك إعادة الاختبار متى شئت\n"
         "• النتائج تحفظ خلال الجلسة فقط\n"
