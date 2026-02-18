@@ -36,28 +36,28 @@ TOKEN = os.getenv('TELEGRAM_BOT_TOKEN', '')
 PORT = int(os.environ.get('PORT', 10000))
 IMAGES_BASE_DIR = 'Images'
 
-# البيانات الثابتة من ملف Excel - تم تقليلها إلى 10 صح/خطأ و 10 اختيارات
+# البيانات الثابتة من ملف Excel - تم تحديثها حسب الملف المرفق
 CORRECT_ANSWERS_DATA = {
     1: {'type': 'tf', 'correct_answer': 't'},
     2: {'type': 'tf', 'correct_answer': 't'},
-    3: {'type': 'tf', 'correct_answer': 'f'},
+    3: {'type': 'tf', 'correct_answer': 't'},
     4: {'type': 'tf', 'correct_answer': 't'},
-    5: {'type': 'tf', 'correct_answer': 'f'},
+    5: {'type': 'tf', 'correct_answer': 't'},
     6: {'type': 'tf', 'correct_answer': 't'},
-    7: {'type': 'tf', 'correct_answer': 't'},
-    8: {'type': 'tf', 'correct_answer': 'f'},
-    9: {'type': 'tf', 'correct_answer': 'f'},
-    10: {'type': 'tf', 'correct_answer': 'f'},
-    20: {'type': 'mcq', 'correct_answer': 'c'},
-    21: {'type': 'mcq', 'correct_answer': 'b'},
-    22: {'type': 'mcq', 'correct_answer': 'c'},
-    23: {'type': 'mcq', 'correct_answer': 'c'},
-    24: {'type': 'mcq', 'correct_answer': 'b'},
-    25: {'type': 'mcq', 'correct_answer': 'b'},
-    26: {'type': 'mcq', 'correct_answer': 'b'},
-    27: {'type': 'mcq', 'correct_answer': 'a'},
-    28: {'type': 'mcq', 'correct_answer': 'd'},
-    29: {'type': 'mcq', 'correct_answer': 'c'},
+    7: {'type': 'tf', 'correct_answer': 'f'},
+    8: {'type': 'tf', 'correct_answer': 't'},
+    9: {'type': 'tf', 'correct_answer': 't'},
+    10: {'type': 'tf', 'correct_answer': 't'},
+    11: {'type': 'mcq', 'correct_answer': 'c'},
+    12: {'type': 'mcq', 'correct_answer': 'b'},
+    13: {'type': 'mcq', 'correct_answer': 'c'},
+    14: {'type': 'mcq', 'correct_answer': 'c'},
+    15: {'type': 'mcq', 'correct_answer': 'b'},
+    16: {'type': 'mcq', 'correct_answer': 'b'},
+    17: {'type': 'mcq', 'correct_answer': 'b'},
+    18: {'type': 'mcq', 'correct_answer': 'b'},
+    19: {'type': 'mcq', 'correct_answer': 'b'},
+    20: {'type': 'mcq', 'correct_answer': 'b'},
 }
 
 def load_correct_answers():
@@ -88,7 +88,7 @@ def get_image_path(question_num):
     """الحصول على مسار الصورة بناءً على رقم السؤال"""
     if 1 <= question_num <= 10:
         folder = "True or False"
-    elif 20 <= question_num <= 29:
+    elif 11 <= question_num <= 20:
         folder = "mcq"
     else:
         logger.error(f"❌ رقم سؤال غير صحيح: {question_num}")
@@ -136,7 +136,6 @@ def get_image_path(question_num):
         logger.error(f"❌ خطأ في قراءة المجلد: {e}")
     
     logger.warning(f"⚠️ لم أجد صورة للسؤال {question_num} في {base_path}")
-    logger.warning(f"⚠️ محتويات المجلد: {os.listdir(base_path) if os.path.exists(base_path) else 'غير موجود'}")
     
     return None
 
@@ -156,7 +155,7 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
         "📚 **مرحباً بك في بوت اختبار الرياضيات!**\n\n"
         "🎯 **معلومات عن الاختبار:**\n"
         "• الأسئلة 1-10: صح/خطأ ✅/❌\n"
-        "• الأسئلة 20-29: اختيار من متعدد 🔠\n"
+        "• الأسئلة 11-20: اختيار من متعدد 🔠\n"
         "• عدد الأسئلة: 20 سؤالاً\n\n"
         "📝 **كيفية الاستخدام:**\n"
         "1. اضغط /begin لبدء الاختبار\n"
@@ -267,7 +266,7 @@ async def send_question(update: Update, context: ContextTypes.DEFAULT_TYPE, user
         ]
         question_type_text = "📝 **سؤال صح/خطأ**"
     else:
-        # أزرار MCQ - تم تغييرها إلى أحرف إنجليزية A, B, C, D
+        # أزرار MCQ - أحرف إنجليزية A, B, C, D
         keyboard = [
             [
                 InlineKeyboardButton("A", callback_data=f"ans_{question_num}_a"),
@@ -503,14 +502,14 @@ async def show_results(update: Update, context: ContextTypes.DEFAULT_TYPE, user_
             wrong_answers_list.append(f"❌ سؤال {q_num}: إجابتك ({user_display}) | الصحيحة ({correct_display})")
     
     # إضافة الإجابات الصحيحة أولاً
-    for item in correct_answers_list[:10]:  # عرض أول 10 فقط لتجنب الرسالة الطويلة
+    for item in correct_answers_list[:10]:
         details += item + "\n"
     
     if len(correct_answers_list) > 10:
         details += f"✅ +{len(correct_answers_list) - 10} إجابة صحيحة أخرى\n"
     
     # إضافة الإجابات الخاطئة
-    for item in wrong_answers_list[:10]:  # عرض أول 10 فقط
+    for item in wrong_answers_list[:10]:
         details += item + "\n"
     
     if len(wrong_answers_list) > 10:
@@ -559,7 +558,7 @@ async def help_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
         "/help - عرض هذه التعليمات\n\n"
         "🎯 **أنواع الأسئلة:**\n"
         "• الأسئلة 1-10: صح/خطأ (✅/❌)\n"
-        "• الأسئلة 20-29: اختيار من متعدد (A/B/C/D)\n\n"
+        "• الأسئلة 11-20: اختيار من متعدد (A/B/C/D)\n\n"
         "⚠️ **ملاحظات:**\n"
         "• يمكنك إعادة الاختبار متى شئت\n"
         "• النتائج تحفظ خلال الجلسة فقط\n"
